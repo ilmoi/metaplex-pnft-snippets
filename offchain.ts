@@ -202,3 +202,53 @@ const _createAndMintPNft = async ({
 
 // --------------------------------------- step 3 -
 // call your ix normally, and if you did the onchain part correctly it should work both with and withour ruleset
+
+// --------------------------------------- if you're using LUT, quick fn to create one for your tests
+export const createCoreTswapLUT = async () => {
+  const conn = TEST_PROVIDER.connection;
+  //intentionally going for > confirmed, otherwise get "is not a recent slot err"
+  const slot = await conn.getSlot("finalized");
+
+  //create
+  const [lookupTableInst, lookupTableAddress] =
+    AddressLookupTableProgram.createLookupTable({
+      authority: TEST_PROVIDER.publicKey,
+      payer: TEST_PROVIDER.publicKey,
+      recentSlot: slot,
+    });
+
+  //see if already created
+  let lookupTableAccount = (
+    await conn.getAddressLookupTable(lookupTableAddress)
+  ).value;
+  if (!!lookupTableAccount) {
+    return lookupTableAccount;
+  }
+
+  const [tswapPda] = findTSwapPDA({});
+
+  //add addresses
+  const extendInstruction = AddressLookupTableProgram.extendLookupTable({
+    payer: TEST_PROVIDER.publicKey,
+    authority: TEST_PROVIDER.publicKey,
+    lookupTable: lookupTableAddress,
+    addresses: [
+      tswapPda,
+      TSWAP_FEE_ACC,
+      TOKEN_PROGRAM_ID,
+      SystemProgram.programId,
+      SYSVAR_RENT_PUBKEY,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      AUTH_PROGRAM_ID,
+      TOKEN_METADATA_PROGRAM_ID,
+      SYSVAR_INSTRUCTIONS_PUBKEY,
+    ],
+  });
+  await buildAndSendTx({ ixs: [lookupTableInst, extendInstruction] });
+
+  //fetch
+  lookupTableAccount = (await conn.getAddressLookupTable(lookupTableAddress))
+    .value;
+
+  return lookupTableAccount;
+};
