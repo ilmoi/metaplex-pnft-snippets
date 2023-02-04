@@ -16,20 +16,54 @@ export const createTokenAuthorizationRules = async (
 ) => {
   const [ruleSetAddress] = await findRuleSetPDA(payer.publicKey, name);
 
-  // Encode the file using msgpack so the pre-encoded data can be written directly to a Solana program account
-  // TODO I couldn't get this to work with the more complex rules like this https://github.com/danenbm/mpl-token-auth-rules-example/tree/royalties-dev
-  //  when I copy pasta JSON from rust it fails to serialize it
-  //  need metaplex team to provide clear examples in typescript
-  let finalData =
-    data ??
-    encode([
-      1,
-      name,
-      payer.publicKey.toBuffer().toJSON().data,
-      {
-        "Transfer:Owner": "Pass",
+  //ruleset relevaent for transfers
+  const ruleSet = {
+    libVersion: 1,
+    ruleSetName: name,
+    owner: Array.from(payer.publicKey.toBytes()),
+    operations: {
+      "Transfer:Owner": {
+        All: {
+          rules: [
+            {
+              Amount: {
+                amount: 1,
+                operator: "Eq",
+                field: "Amount",
+              },
+            },
+            {
+              Any: {
+                rules: [
+                  {
+                    ProgramOwnedList: {
+                      programs: [Array.from(TENSORSWAP_ADDR.toBytes())],
+                      field: "Source",
+                    },
+                  },
+                  {
+                    ProgramOwnedList: {
+                      programs: [Array.from(TENSORSWAP_ADDR.toBytes())],
+                      field: "Destination",
+                    },
+                  },
+                  {
+                    ProgramOwnedList: {
+                      programs: [Array.from(TENSORSWAP_ADDR.toBytes())],
+                      field: "Authority",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
       },
-    ]);
+    },
+  };
+
+  // Encode the file using msgpack so the pre-encoded data can be written directly to a Solana program account
+  let finalData = data ?? encode(ruleSet);
 
   let createIX = createCreateOrUpdateInstruction(
     {
